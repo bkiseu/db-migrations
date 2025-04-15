@@ -1,0 +1,78 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 18
+    commands:
+      - echo Installing required packages
+      - apt-get update -y
+      - apt-get install -y postgresql-client
+      - npm install -g pg
+  
+  pre_build:
+    commands:
+      - echo Retrieving database credentials from AWS Secrets Manager
+      - DB_CREDENTIALS=$(aws secretsmanager get-secret-value --secret-id $DB_CREDENTIALS_SECRET_ARN --query SecretString --output text)
+      - DB_HOST=$(echo $DB_CREDENTIALS | jq -r '.host')
+      - DB_PORT=$(echo $DB_CREDENTIALS | jq -r '.port')
+      - DB_NAME=$(echo $DB_CREDENTIALS | jq -r '.dbname')
+      - DB_USER=$(echo $DB_CREDENTIALS | jq -r '.username')
+      - DB_PASSWORD=$(echo $DB_CREDENTIALS | jq -r '.password')
+      - echo Retrieved database connection information
+      
+  build:
+    commands:
+      - echo Starting validation of SQL migration scripts
+      - echo "Identifying migration files..."
+      - MIGRATION_FILES=$(find . -type f -name "*.sql" | sort)
+      - |
+        if [ -z "$MIGRATION_FILES" ]; then
+          echo "No SQL migration files found."
+          exit 0
+        fi
+      
+      - echo "Found the following migration files:"
+      - echo "$MIGRATION_FILES"
+      
+      - echo "Validating SQL syntax..."
+      - |
+        for file in $MIGRATION_FILES; do
+          echo "Validating syntax for $file"
+          # Use psql to check syntax without executing
+          PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -c "\\set ON_ERROR_STOP on" -f $file -v ON_ERROR_STOP=1 --echo-all --no-psqlrc -c "ROLLBACK;"
+          if [ $? -ne 0 ]; then
+            echo "Error in SQL file: $file"
+            exit 1
+          fi
+          echo "Syntax validation passed for $file"
+        done
+      
+      - echo "Creating metadata file for execution..."
+      - |
+        cat > migrations-metadata.json << EOF
+        {
+          "migrationFiles": [
+            $(for file in $MIGRATION_FILES; do echo "\"$file\","; done | sed '$s/,$//')
+          ],
+          "timestamp": "$(date +%Y%m%d%H%M%S)",
+          "buildId": "$CODEBUILD_BUILD_ID"
+        }
+        EOF
+      
+      - echo "SQL validation completed successfully"
+  
+  post_build:
+    commands:
+      - echo Packaging migration files for execution
+      - mkdir -p migrations
+      - cp *.sql migrations/
+      - cp migrations-metadata.json migrations/
+      - echo "Build completed successfully"
+
+artifacts:
+  files:
+    - migrations/**/*
+    - migrations-metadata.json
+    - buildspec.yml
+  discard-paths: no
