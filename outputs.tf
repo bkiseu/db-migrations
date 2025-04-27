@@ -52,14 +52,14 @@ output "db_credentials_secret_arn" {
   value       = aws_secretsmanager_secret.db_credentials.arn
 }
 
-output "codecommit_repository_url" {
-  description = "URL of the CodeCommit repository"
-  value       = aws_codecommit_repository.db_migrations_repo.clone_url_http
+output "github_connection_arn" {
+  description = "ARN of the GitHub connection"
+  value       = aws_codestarconnections_connection.github.arn
 }
 
-output "codecommit_repository_name" {
-  description = "Name of the CodeCommit repository"
-  value       = aws_codecommit_repository.db_migrations_repo.repository_name
+output "github_connection_status" {
+  description = "Status of the GitHub connection"
+  value       = aws_codestarconnections_connection.github.connection_status
 }
 
 output "codepipeline_name" {

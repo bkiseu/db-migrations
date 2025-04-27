@@ -10,12 +10,16 @@ public_subnet_cidrs  = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
 database_subnet_cidrs = ["10.0.201.0/24", "10.0.202.0/24", "10.0.203.0/24"]
 
 db_allocated_storage = 20
-db_engine_version    = "14.7"
+db_engine_version    = "14.6"
 db_instance_class    = "db.t3.small"
 db_replica_instance_class = "db.t3.small"
 db_name              = "appdb"
 db_username          = "dbadmin"
 db_password_secret_name = "db-migration-admin-password"
+
+# GitHub configuration
+github_repository = "bkiseu/db-migrations"
+github_branch     = "main"
 
 common_tags = {
   Project     = "db-migration"

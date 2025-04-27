@@ -182,6 +182,7 @@ resource "aws_secretsmanager_secret_version" "db_credentials" {
     password = local.db_password
     engine   = "postgres"
     host     = aws_db_instance.database_primary.address
+    reader_host = var.environment != "dev" ? aws_db_instance.database_replica[0].address : aws_db_instance.database_primary.address
     port     = 5432
     dbname   = var.db_name
   })
@@ -262,11 +263,11 @@ resource "aws_iam_role_policy" "codebuild_policy" {
   })
 }
 
-# CodeCommit Repository
-resource "aws_codecommit_repository" "db_migrations_repo" {
-  repository_name = "${var.project_name}-db-migrations"
-  description     = "Repository for database migration scripts"
-
+# GitHub connection for CodePipeline
+resource "aws_codestarconnections_connection" "github" {
+  name          = "${var.project_name}-github-connection"
+  provider_type = "GitHub"
+  
   tags = var.common_tags
 }
 
@@ -341,13 +342,9 @@ resource "aws_iam_role_policy" "codepipeline_policy" {
       {
         Effect = "Allow"
         Action = [
-          "codecommit:GetBranch",
-          "codecommit:GetCommit",
-          "codecommit:UploadArchive",
-          "codecommit:GetUploadArchiveStatus",
-          "codecommit:CancelUploadArchive"
+          "codestar-connections:UseConnection"
         ]
-        Resource = aws_codecommit_repository.db_migrations_repo.arn
+        Resource = aws_codestarconnections_connection.github.arn
       },
       {
         Effect = "Allow"
@@ -510,11 +507,29 @@ resource "aws_lambda_function" "db_migration_executor" {
 }
 
 # Upload Lambda code
-resource "aws_s3_object" "lambda_package" {
-  bucket = aws_s3_bucket.artifacts_bucket.bucket
-  key    = "lambda/db-migration-executor.zip"
-  source = data.archive_file.lambda_zip.output_path
-  etag   = filemd5(data.archive_file.lambda_zip.output_path)
+resource "null_resource" "install_lambda_dependencies" {
+  triggers = {
+    requirements_md5 = filemd5("${path.module}/lambda/requirements.txt")
+    lambda_code_md5  = filemd5("${path.module}/lambda/index.py")
+  }
+
+  provisioner "local-exec" {
+    command = <<EOT
+      # Create lambda layer directory structure
+      mkdir -p ${path.module}/lambda_layer/python
+      
+      # Install dependencies into the lambda layer directory
+      pip install -r ${path.module}/lambda/requirements.txt -t ${path.module}/lambda_layer/python --no-cache-dir
+      
+      # Clean up unnecessary files to reduce package size
+      find ${path.module}/lambda_layer -type d -name "__pycache__" -exec rm -rf {} +
+      find ${path.module}/lambda_layer -type d -name "*.dist-info" -exec rm -rf {} +
+      find ${path.module}/lambda_layer -type d -name "*.egg-info" -exec rm -rf {} +
+      find ${path.module}/lambda_layer -type f -name "*.pyc" -delete
+      find ${path.module}/lambda_layer -type f -name "*.pyo" -delete
+      find ${path.module}/lambda_layer -type f -name "*.pyd" -delete
+    EOT
+  }
 }
 
 # Lambda package creation
@@ -545,14 +560,14 @@ resource "aws_codepipeline" "db_migration_pipeline" {
       name             = "Source"
       category         = "Source"
       owner            = "AWS"
-      provider         = "CodeCommit"
+      provider         = "CodeStarSourceConnection"
       version          = "1"
       output_artifacts = ["source_output"]
       
       configuration = {
-        RepositoryName = aws_codecommit_repository.db_migrations_repo.repository_name
-        BranchName     = "main"
-        PollForSourceChanges = "false"
+        ConnectionArn    = aws_codestarconnections_connection.github.arn
+        FullRepositoryId = var.github_repository
+        BranchName       = var.github_branch
       }
     }
   }
@@ -612,65 +627,68 @@ resource "aws_codepipeline" "db_migration_pipeline" {
   tags = var.common_tags
 }
 
-# CloudWatch Event Rule for CodeCommit
-resource "aws_cloudwatch_event_rule" "codecommit_trigger" {
-  name        = "${var.project_name}-codecommit-trigger"
-  description = "Trigger CodePipeline on CodeCommit repository changes"
-  
-  event_pattern = jsonencode({
-    source      = ["aws.codecommit"]
-    detail-type = ["CodeCommit Repository State Change"]
-    resources   = [aws_codecommit_repository.db_migrations_repo.arn]
-    detail = {
-      event         = ["referenceCreated", "referenceUpdated"]
-      referenceType = ["branch"]
-      referenceName = ["main"]
-    }
-  })
-}
-
-# CloudWatch Event Target
-resource "aws_cloudwatch_event_target" "codecommit_target" {
-  rule     = aws_cloudwatch_event_rule.codecommit_trigger.name
-  arn      = aws_codepipeline.db_migration_pipeline.arn
-  role_arn = aws_iam_role.cloudwatch_role.arn
-}
-
-# IAM Role for CloudWatch Event
-resource "aws_iam_role" "cloudwatch_role" {
-  name = "${var.project_name}-cloudwatch-role"
-  
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "events.amazonaws.com"
-        }
-      }
-    ]
-  })
-  
-  tags = var.common_tags
-}
-
-# IAM Policy for CloudWatch Event
-resource "aws_iam_role_policy" "cloudwatch_policy" {
-  name = "${var.project_name}-cloudwatch-policy"
-  role = aws_iam_role.cloudwatch_role.id
-  
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "codepipeline:StartPipelineExecution"
-        ]
-        Resource = aws_codepipeline.db_migration_pipeline.arn
-      }
-    ]
-  })
-}
+# Remove the CloudWatch Event Rule since GitHub webhooks will handle this
+# Commenting out rather than deleting for reference
+# 
+# # CloudWatch Event Rule for CodeCommit
+# resource "aws_cloudwatch_event_rule" "codecommit_trigger" {
+#   name        = "${var.project_name}-codecommit-trigger"
+#   description = "Trigger CodePipeline on CodeCommit repository changes"
+#   
+#   event_pattern = jsonencode({
+#     source      = ["aws.codecommit"]
+#     detail-type = ["CodeCommit Repository State Change"]
+#     resources   = [aws_codecommit_repository.db_migrations_repo.arn]
+#     detail = {
+#       event         = ["referenceCreated", "referenceUpdated"]
+#       referenceType = ["branch"]
+#       referenceName = ["main"]
+#     }
+#   })
+# }
+# 
+# # CloudWatch Event Target
+# resource "aws_cloudwatch_event_target" "codecommit_target" {
+#   rule     = aws_cloudwatch_event_rule.codecommit_trigger.name
+#   arn      = aws_codepipeline.db_migration_pipeline.arn
+#   role_arn = aws_iam_role.cloudwatch_role.arn
+# }
+# 
+# # IAM Role for CloudWatch Event
+# resource "aws_iam_role" "cloudwatch_role" {
+#   name = "${var.project_name}-cloudwatch-role"
+#   
+#   assume_role_policy = jsonencode({
+#     Version = "2012-10-17"
+#     Statement = [
+#       {
+#         Action = "sts:AssumeRole"
+#         Effect = "Allow"
+#         Principal = {
+#           Service = "events.amazonaws.com"
+#         }
+#       }
+#     ]
+#   })
+#   
+#   tags = var.common_tags
+# }
+# 
+# # IAM Policy for CloudWatch Event
+# resource "aws_iam_role_policy" "cloudwatch_policy" {
+#   name = "${var.project_name}-cloudwatch-policy"
+#   role = aws_iam_role.cloudwatch_role.id
+#   
+#   policy = jsonencode({
+#     Version = "2012-10-17"
+#     Statement = [
+#       {
+#         Effect = "Allow"
+#         Action = [
+#           "codepipeline:StartPipelineExecution"
+#         ]
+#         Resource = aws_codepipeline.db_migration_pipeline.arn
+#       }
+#     ]
+#   })
+# }

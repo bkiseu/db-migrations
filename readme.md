@@ -56,11 +56,12 @@ The solution includes:
 2. **RDS with Writer/Reader Setup**: 
    - Primary instance for write operations and database changes
    - Read replica for scaling read operations (in staging/production environments)
-3. **CodeCommit Repository**: Stores SQL migration scripts with version control.
-4. **CodePipeline**: Orchestrates the workflow from code commit to deployment.
-5. **CodeBuild**: Validates the SQL scripts before deployment.
-6. **Lambda Function with Flyway**: Executes the approved migrations using Flyway.
-7. **Secrets Manager**: Securely stores database credentials.
+3. **GitHub Repository**: Stores SQL migration scripts with version control.
+4. **AWS CodeStar Connection**: Securely integrates GitHub with AWS services.
+5. **CodePipeline**: Orchestrates the workflow from code commit to deployment.
+6. **CodeBuild**: Validates the SQL scripts before deployment.
+7. **Lambda Function with Flyway**: Executes the approved migrations using Flyway.
+8. **Secrets Manager**: Securely stores database credentials.
 
 ## Prerequisites
 
@@ -77,18 +78,7 @@ git clone <repository-url>
 cd db-migration-pipeline
 ```
 
-### 2. Enable the CodeCommit service in your AWS account
-
-Run the provided script to enable the CodeCommit service:
-
-```bash
-chmod +x scripts/enable_codecommit.sh
-./scripts/enable_codecommit.sh
-```
-
-This script creates an initial repository to enable the CodeCommit service in your AWS account.
-
-### 3. Set up the database password in AWS Secrets Manager
+### 2. Set up the database password in AWS Secrets Manager
 
 Run the provided setup script to create a secure password in AWS Secrets Manager:
 
@@ -99,20 +89,33 @@ chmod +x scripts/setup_password_secret.sh
 
 This script creates a secret named `db-migration-admin-password` with a randomly generated secure password.
 
-### 4. Initialize Terraform
+### 3. Initialize Terraform
 
 ```bash
 terraform init
 ```
 
-### 5. Configure variables
+### 4. Configure variables
 
 Edit `terraform.tfvars` to set the necessary variables:
 
 - `aws_region`
 - `project_name`
 - `environment`
-- `db_password_secret_name` (if you used a different name in step 3)
+- `db_password_secret_name` (if you used a different name in step 2)
+- `github_repository` (format: "owner/repo")
+- `github_branch` (default: "main")
+
+### 5. Create a GitHub repository for migrations
+
+Create a GitHub repository that will store your migration files and prepare it with the included script:
+
+```bash
+chmod +x scripts/setup_github_repo.sh
+./scripts/setup_github_repo.sh your-org/your-repo-name
+```
+
+Follow the instructions provided by the script to complete the GitHub repository setup.
 
 ### 6. Apply Terraform configuration
 
@@ -120,22 +123,15 @@ Edit `terraform.tfvars` to set the necessary variables:
 terraform apply
 ```
 
-### 7. Set up the CodeCommit repository with initial migrations
+### 7. Complete the GitHub connection
 
-After the infrastructure is created, set up the repository:
+After deploying the infrastructure:
 
-```bash
-chmod +x scripts/setup_codecommit_repo.sh
-./scripts/setup_codecommit_repo.sh \
-  $(terraform output -raw codecommit_repository_name) \
-  $(terraform output -raw codecommit_repository_url)
-```
-
-This script will:
-- Clone the empty repository
-- Create a migrations directory with sample migration files
-- Add a buildspec.yml file for CodeBuild
-- Push the initial structure to the repository
+1. Go to the AWS Console
+2. Navigate to Developer Tools > Settings > Connections
+3. Find the connection for your pipeline (name will match your project name)
+4. Click "Update pending connection"
+5. Follow the steps to authorize the connection with GitHub
 
 ### 5. Set up the CodeCommit repository
 
@@ -156,14 +152,14 @@ V002__description.sql
 ...
 ```
 
-### 8. Submit database changes via PR workflow
+### 8. Submit database changes via GitHub Pull Requests
 
 For each database change:
 
-1. Clone the CodeCommit repository:
+1. Clone your GitHub migrations repository:
    ```bash
-   git clone $(terraform output -raw codecommit_repository_url)
-   cd $(terraform output -raw codecommit_repository_name)
+   git clone https://github.com/your-org/your-repo-name.git
+   cd your-repo-name
    ```
 
 2. Create a branch for your changes:
@@ -174,11 +170,23 @@ For each database change:
 3. Add your SQL migration file:
    ```bash
    # Create your migration file
-   vim migrations/V002__add_new_table.sql
+   vim migrations/V003__add_new_table.sql
    
    # Add it to git
-   git add migrations/V002__add_new_table.sql
+   git add migrations/V003__add_new_table.sql
    git commit -m "Add new table for customer data"
+   git push --set-upstream origin feature/new-table
+   ```
+
+4. Create a Pull Request in the GitHub web interface
+
+5. After review and approval, merge the PR to trigger the pipeline
+
+6. Monitor the pipeline execution in the AWS CodePipeline console
+
+7. Approve the changes in the manual approval stage
+
+The Lambda function will then apply the approved changes to the database using Flyway. -m "Add new table for customer data"
    git push --set-upstream origin feature/new-table
    ```
 

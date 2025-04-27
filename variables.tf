@@ -1,3 +1,14 @@
+variable "github_repository" {
+  description = "GitHub repository in format 'owner/repo'"
+  type        = string
+  default     = "your-org/db-migrations"
+}
+
+variable "github_branch" {
+  description = "Branch name to monitor for changes"
+  type        = string
+  default     = "main"
+}
 variable "aws_region" {
   description = "The AWS region to deploy resources"
   type        = string
@@ -59,7 +70,7 @@ variable "db_allocated_storage" {
 variable "db_engine_version" {
   description = "Engine version for PostgreSQL"
   type        = string
-  default     = "14.6"
+  default     = "14.7"
 }
 
 variable "db_instance_class" {
