@@ -70,7 +70,7 @@ variable "db_allocated_storage" {
 variable "db_engine_version" {
   description = "Engine version for PostgreSQL"
   type        = string
-  default     = "14.7"
+  default     = "16.8"  # Downgraded to a more widely available version
 }
 
 variable "db_instance_class" {

@@ -113,7 +113,7 @@ resource "aws_db_instance" "database_primary" {
   db_name              = var.db_name
   username             = var.db_username
   password             = local.db_password
-  parameter_group_name = "default.postgres14"
+  parameter_group_name = "default.postgres16"
   skip_final_snapshot  = var.environment != "production"
 
   vpc_security_group_ids = [aws_security_group.db_security_group.id]
@@ -144,7 +144,7 @@ resource "aws_db_instance" "database_replica" {
   identifier           = "${var.project_name}-db-replica-${random_string.suffix.result}"
   replicate_source_db  = aws_db_instance.database_primary.identifier
   instance_class       = var.db_replica_instance_class
-  parameter_group_name = "default.postgres14"
+  parameter_group_name = "default.postgres16"
   
   vpc_security_group_ids = [aws_security_group.db_security_group.id]
   
@@ -482,10 +482,11 @@ resource "aws_lambda_function" "db_migration_executor" {
   handler          = "index.handler"
   runtime          = "python3.9"
   timeout          = 300
-  memory_size      = 512
-  
-  s3_bucket        = aws_s3_bucket.artifacts_bucket.bucket
-  s3_key           = "lambda/db-migration-executor.zip"
+  memory_size      = 1024
+
+  # Use local file for deployment
+  filename         = data.archive_file.lambda_zip.output_path
+  source_code_hash = data.archive_file.lambda_zip.output_base64sha256
   
   environment {
     variables = {
@@ -500,10 +501,6 @@ resource "aws_lambda_function" "db_migration_executor" {
   
   tags = var.common_tags
   
-  depends_on = [
-    # Allow time for the zip file to be uploaded
-    aws_s3_object.lambda_package
-  ]
 }
 
 # Upload Lambda code
