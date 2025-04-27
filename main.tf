@@ -624,6 +624,7 @@ resource "aws_codepipeline" "db_migration_pipeline" {
   tags = var.common_tags
 }
 
+
 # Remove the CloudWatch Event Rule since GitHub webhooks will handle this
 # Commenting out rather than deleting for reference
 # 
