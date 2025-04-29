@@ -3,12 +3,16 @@ version: 0.2
 phases:
   install:
     runtime-versions:
-      nodejs: 14  # Using Node.js 14 for compatibility
+      nodejs: 14
     commands:
       - echo Installing required packages
       - yum update -y
-      - yum install -y postgresql postgresql-devel jq
-      - psql --version
+      - yum install -y jq
+      
+      # Install newer PostgreSQL client from PGDG repo directly
+      - yum install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-7-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+      - yum install -y postgresql14
+      - /usr/pgsql-14/bin/psql --version
       - npm install -g pg
   
   pre_build:
@@ -41,7 +45,7 @@ phases:
         for file in $MIGRATION_FILES; do
           echo "Validating syntax for $file"
           # Use psql to check syntax without executing
-          PGPASSWORD=$DB_PASSWORD psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -c "\\set ON_ERROR_STOP on" -f $file -v ON_ERROR_STOP=1 --echo-all --no-psqlrc -c "ROLLBACK;"
+          PGPASSWORD=$DB_PASSWORD /usr/pgsql-14/bin/psql -h $DB_HOST -p $DB_PORT -U $DB_USER -d $DB_NAME -c "\\set ON_ERROR_STOP on" -f $file -v ON_ERROR_STOP=1 --echo-all --no-psqlrc -c "ROLLBACK;"
           if [ $? -ne 0 ]; then
             echo "Error in SQL file: $file"
             exit 1
