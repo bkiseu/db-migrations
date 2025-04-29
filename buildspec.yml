@@ -3,12 +3,12 @@ version: 0.2
 phases:
   install:
     runtime-versions:
-      nodejs: 14  # Changed from 18 to 14 for better compatibility
+      nodejs: 14  # Using Node.js 14 for compatibility
     commands:
       - echo Installing required packages
       - yum update -y
-      - amazon-linux-extras enable postgresql14
-      - yum install -y postgresql jq
+      - yum install -y postgresql postgresql-devel jq
+      - psql --version
       - npm install -g pg
   
   pre_build:
