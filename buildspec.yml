@@ -3,11 +3,11 @@ version: 0.2
 phases:
   install:
     runtime-versions:
-      nodejs: 18
+      nodejs: 18  # This image supports Node.js 18
     commands:
       - echo Installing required packages
-      - apt-get update -y
-      - apt-get install -y postgresql-client
+      - yum update -y
+      - yum install -y postgresql15 jq  # Use PostgreSQL 15 client
       - npm install -g pg
   
   pre_build:
@@ -25,7 +25,7 @@ phases:
     commands:
       - echo Starting validation of SQL migration scripts
       - echo "Identifying migration files..."
-      - MIGRATION_FILES=$(find . -type f -name "*.sql" | sort)
+      - MIGRATION_FILES=$(find migrations -type f -name "*.sql" | sort)
       - |
         if [ -z "$MIGRATION_FILES" ]; then
           echo "No SQL migration files found."
@@ -50,7 +50,7 @@ phases:
       
       - echo "Creating metadata file for execution..."
       - |
-        cat > migrations-metadata.json << EOF
+        cat > migrations-metadata.json << EOMETA
         {
           "migrationFiles": [
             $(for file in $MIGRATION_FILES; do echo "\"$file\","; done | sed '$s/,$//')
@@ -58,16 +58,12 @@ phases:
           "timestamp": "$(date +%Y%m%d%H%M%S)",
           "buildId": "$CODEBUILD_BUILD_ID"
         }
-        EOF
+        EOMETA
       
       - echo "SQL validation completed successfully"
   
   post_build:
     commands:
-      - echo Packaging migration files for execution
-      - mkdir -p migrations
-      - cp *.sql migrations/
-      - cp migrations-metadata.json migrations/
       - echo "Build completed successfully"
 
 artifacts:
@@ -76,3 +72,4 @@ artifacts:
     - migrations-metadata.json
     - buildspec.yml
   discard-paths: no
+  
