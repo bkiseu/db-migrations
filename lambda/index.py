@@ -14,7 +14,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Initialize AWS clients
-secrets_client = boto3.client('secrets_manager')
+secrets_client = boto3.client('secretsmanager')
 s3_client = boto3.client('s3')
 codepipeline_client = boto3.client('codepipeline')
 
@@ -146,7 +146,7 @@ def handler(event, context):
     logger.info(f"Event: {json.dumps(event)}")
     
     job_id = None
-    
+
     try:
         # Extract information from the CodePipeline event
         if 'CodePipeline.job' in event:
