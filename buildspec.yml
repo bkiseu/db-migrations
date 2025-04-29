@@ -8,32 +8,10 @@ phases:
       - echo Installing required packages
       - yum update -y
       - yum install -y jq
-      
-      # Install just the PostgreSQL client
-      - echo -e "[pgdg13]\nname=PostgreSQL 13 for RHEL/CentOS 7 - x86_64\nbaseurl=https://download.postgresql.org/pub/repos/yum/13/redhat/rhel-7-x86_64\nenabled=1\ngpgcheck=0" > /etc/yum.repos.d/pgdg13.repo
-      - yum install -y postgresql13 --setopt=pgdg13.includepkgs=postgresql13
-      - export PATH=$PATH:/usr/pgsql-13/bin
-      - which psql || true
-      - psql --version || /usr/pgsql-13/bin/psql --version || true
-      - npm install -g pg
   
-  pre_build:
-    commands:
-      - echo Retrieving database credentials from AWS Secrets Manager
-      - export PATH=$PATH:/usr/pgsql-13/bin
-      - DB_CREDENTIALS=$(aws secretsmanager get-secret-value --secret-id $DB_CREDENTIALS_SECRET_ARN --query SecretString --output text)
-      - DB_HOST=$(echo $DB_CREDENTIALS | jq -r '.host')
-      - DB_PORT=$(echo $DB_CREDENTIALS | jq -r '.port')
-      - DB_NAME=$(echo $DB_CREDENTIALS | jq -r '.dbname')
-      - DB_USER=$(echo $DB_CREDENTIALS | jq -r '.username')
-      - DB_PASSWORD=$(echo $DB_CREDENTIALS | jq -r '.password')
-      - echo Retrieved database connection information
-      
   build:
     commands:
-      - echo Starting validation of SQL migration scripts
       - echo "Identifying migration files..."
-      - export PATH=$PATH:/usr/pgsql-13/bin
       - MIGRATION_FILES=$(find migrations -type f -name "*.sql" | sort)
       - |
         if [ -z "$MIGRATION_FILES" ]; then
@@ -43,14 +21,6 @@ phases:
       
       - echo "Found the following migration files:"
       - echo "$MIGRATION_FILES"
-      
-      - echo "Validating SQL syntax..."
-      - |
-        # Skip validation for now - just report files found
-        for file in $MIGRATION_FILES; do
-          echo "Found migration file: $file"
-          cat $file | head -5
-        done
       
       - echo "Creating metadata file for execution..."
       - |
@@ -64,7 +34,7 @@ phases:
         }
         EOMETA
       
-      - echo "SQL validation completed successfully"
+      - echo "Skipping SQL validation - will be handled by Lambda"
   
   post_build:
     commands:
@@ -76,4 +46,3 @@ artifacts:
     - migrations-metadata.json
     - buildspec.yml
   discard-paths: no
-  
