@@ -3,11 +3,12 @@ version: 0.2
 phases:
   install:
     runtime-versions:
-      nodejs: 18  # This image supports Node.js 18
+      nodejs: 14  # Changed from 18 to 14 for better compatibility
     commands:
       - echo Installing required packages
       - yum update -y
-      - yum install -y postgresql15 jq  # Use PostgreSQL 15 client
+      - amazon-linux-extras enable postgresql14
+      - yum install -y postgresql jq
       - npm install -g pg
   
   pre_build:
@@ -72,4 +73,3 @@ artifacts:
     - migrations-metadata.json
     - buildspec.yml
   discard-paths: no
-  
